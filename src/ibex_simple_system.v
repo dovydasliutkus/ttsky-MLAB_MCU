@@ -13348,6 +13348,7 @@ module ibex_simple_system (
 				end
 				initial _sv2v_0 = 0;
 			end
+			wire last_read;
 			assign i_i2c_fsm.clk = clk;
 			assign i_i2c_fsm.start = start;
 			assign i_i2c_fsm.w_data = wdata;
@@ -13362,7 +13363,6 @@ module ibex_simple_system (
 			assign i_i2c_fsm.sram_access = sram_access;
 			assign i_i2c_fsm.mem_addr = mem_addr;
 			assign mem_addr = mem_addr_reg;
-			wire last_read;
 			assign last_read = mem_index == ((32'd8192 + 32'd4096) - 4);
 			always @(posedge clk or negedge ibex_simple_system.wbm[_mbase_wb].rst)
 				if (!ibex_simple_system.wbm[_mbase_wb].rst) begin

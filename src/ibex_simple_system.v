@@ -10704,6 +10704,662 @@ module gpio_top (
 	assign out_pad = (rgpio_out & ~rgpio_aux) | (aux_i & rgpio_aux);
 	assign ext_pad_o = out_pad;
 endmodule
+module i2c_master_top (
+	wb_clk_i,
+	arst_i,
+	wb_adr_i,
+	wb_dat_i,
+	wb_dat_o,
+	wb_we_i,
+	wb_stb_i,
+	wb_cyc_i,
+	wb_ack_o,
+	wb_inta_o,
+	scl_pad_i,
+	scl_pad_o,
+	scl_padoen_o,
+	sda_pad_i,
+	sda_pad_o,
+	sda_padoen_o
+);
+	parameter ARST_LVL = 1'b0;
+	parameter BOOT_I2C_PRESCALER = 16'd15;
+	input wb_clk_i;
+	input arst_i;
+	input [2:0] wb_adr_i;
+	input [7:0] wb_dat_i;
+	output reg [7:0] wb_dat_o;
+	input wb_we_i;
+	input wb_stb_i;
+	input wb_cyc_i;
+	output reg wb_ack_o;
+	output reg wb_inta_o;
+	input scl_pad_i;
+	output wire scl_pad_o;
+	output wire scl_padoen_o;
+	input sda_pad_i;
+	output wire sda_pad_o;
+	output wire sda_padoen_o;
+	reg [15:0] prer;
+	reg [7:0] ctr;
+	reg [7:0] txr;
+	wire [7:0] rxr;
+	reg [7:0] cr;
+	wire [7:0] sr;
+	wire done;
+	wire core_en;
+	wire ien;
+	wire irxack;
+	reg rxack;
+	reg tip;
+	reg irq_flag;
+	wire i2c_busy;
+	wire i2c_al;
+	reg al;
+	wire rst_i = arst_i ^ ARST_LVL;
+	wire wb_wacc = wb_we_i & wb_ack_o;
+	always @(posedge wb_clk_i) wb_ack_o <=  (wb_cyc_i & wb_stb_i) & ~wb_ack_o;
+	always @(posedge wb_clk_i)
+		case (wb_adr_i)
+			3'b000: wb_dat_o <=  prer[7:0];
+			3'b001: wb_dat_o <=  prer[15:8];
+			3'b010: wb_dat_o <=  ctr;
+			3'b011: wb_dat_o <=  rxr;
+			3'b100: wb_dat_o <=  sr;
+			3'b101: wb_dat_o <=  txr;
+			3'b110: wb_dat_o <=  cr;
+			3'b111: wb_dat_o <=  0;
+		endcase
+	always @(posedge wb_clk_i or negedge rst_i)
+		if (!rst_i) begin
+			prer <=  BOOT_I2C_PRESCALER;
+			ctr <=  8'h00;
+			txr <=  8'h00;
+		end
+		else if (wb_wacc)
+			case (wb_adr_i)
+				3'b000: prer[7:0] <=  wb_dat_i;
+				3'b001: prer[15:8] <=  wb_dat_i;
+				3'b010: ctr <=  wb_dat_i;
+				3'b011: txr <=  wb_dat_i;
+				default:
+					;
+			endcase
+	always @(posedge wb_clk_i or negedge rst_i)
+		if (!rst_i)
+			cr <=  8'h00;
+		else if (wb_wacc) begin
+			if (core_en & (wb_adr_i == 3'b100))
+				cr <=  wb_dat_i;
+		end
+		else begin
+			if (done | i2c_al)
+				cr[7:4] <=  4'h0;
+			cr[2:1] <=  2'b00;
+			cr[0] <=  1'b0;
+		end
+	wire sta = cr[7];
+	wire sto = cr[6];
+	wire rd = cr[5];
+	wire wr = cr[4];
+	wire ack = cr[3];
+	wire iack = cr[0];
+	assign core_en = ctr[7];
+	assign ien = ctr[6];
+	i2c_master_byte_ctrl byte_controller(
+		.clk(wb_clk_i),
+		.nReset(rst_i),
+		.ena(core_en),
+		.clk_cnt(prer),
+		.start(sta),
+		.stop(sto),
+		.read(rd),
+		.write(wr),
+		.ack_in(ack),
+		.din(txr),
+		.cmd_ack(done),
+		.ack_out(irxack),
+		.dout(rxr),
+		.i2c_busy(i2c_busy),
+		.i2c_al(i2c_al),
+		.scl_i(scl_pad_i),
+		.scl_o(scl_pad_o),
+		.scl_oen(scl_padoen_o),
+		.sda_i(sda_pad_i),
+		.sda_o(sda_pad_o),
+		.sda_oen(sda_padoen_o)
+	);
+	always @(posedge wb_clk_i or negedge rst_i)
+		if (!rst_i) begin
+			al <=  1'b0;
+			rxack <=  1'b0;
+			tip <=  1'b0;
+			irq_flag <=  1'b0;
+		end
+		else begin
+			al <=  i2c_al | (al & ~sta);
+			rxack <=  irxack;
+			tip <=  rd | wr;
+			irq_flag <=  ((done | i2c_al) | irq_flag) & ~iack;
+		end
+	always @(posedge wb_clk_i or negedge rst_i)
+		if (!rst_i)
+			wb_inta_o <=  1'b0;
+		else
+			wb_inta_o <=  irq_flag && ien;
+	assign sr[7] = rxack;
+	assign sr[6] = i2c_busy;
+	assign sr[5] = al;
+	assign sr[4:2] = 3'h0;
+	assign sr[1] = tip;
+	assign sr[0] = irq_flag;
+endmodule
+module i2c_master_byte_ctrl (
+	clk,
+	nReset,
+	ena,
+	clk_cnt,
+	start,
+	stop,
+	read,
+	write,
+	ack_in,
+	din,
+	cmd_ack,
+	ack_out,
+	dout,
+	i2c_busy,
+	i2c_al,
+	scl_i,
+	scl_o,
+	scl_oen,
+	sda_i,
+	sda_o,
+	sda_oen
+);
+	input clk;
+	input nReset;
+	input ena;
+	input [15:0] clk_cnt;
+	input start;
+	input stop;
+	input read;
+	input write;
+	input ack_in;
+	input [7:0] din;
+	output reg cmd_ack;
+	output reg ack_out;
+	output wire i2c_busy;
+	output wire i2c_al;
+	output wire [7:0] dout;
+	input scl_i;
+	output wire scl_o;
+	output wire scl_oen;
+	input sda_i;
+	output wire sda_o;
+	output wire sda_oen;
+	parameter [4:0] ST_IDLE = 5'b00000;
+	parameter [4:0] ST_START = 5'b00001;
+	parameter [4:0] ST_READ = 5'b00010;
+	parameter [4:0] ST_WRITE = 5'b00100;
+	parameter [4:0] ST_ACK = 5'b01000;
+	parameter [4:0] ST_STOP = 5'b10000;
+	reg [3:0] core_cmd;
+	reg core_txd;
+	wire core_ack;
+	wire core_rxd;
+	reg [7:0] sr;
+	reg shift;
+	reg ld;
+	wire go;
+	reg [2:0] dcnt;
+	wire cnt_done;
+	i2c_master_bit_ctrl bit_controller(
+		.clk(clk),
+		.nReset(nReset),
+		.ena(ena),
+		.clk_cnt(clk_cnt),
+		.cmd(core_cmd),
+		.cmd_ack(core_ack),
+		.busy(i2c_busy),
+		.al(i2c_al),
+		.din(core_txd),
+		.dout(core_rxd),
+		.scl_i(scl_i),
+		.scl_o(scl_o),
+		.scl_oen(scl_oen),
+		.sda_i(sda_i),
+		.sda_o(sda_o),
+		.sda_oen(sda_oen)
+	);
+	assign go = ((read | write) | stop) & ~cmd_ack;
+	assign dout = sr;
+	always @(posedge clk or negedge nReset)
+		if (!nReset)
+			sr <=  8'h00;
+		else if (ld)
+			sr <=  din;
+		else if (shift)
+			sr <=  {sr[6:0], core_rxd};
+	always @(posedge clk or negedge nReset)
+		if (!nReset)
+			dcnt <=  3'h0;
+		else if (ld)
+			dcnt <=  3'h7;
+		else if (shift)
+			dcnt <=  dcnt - 3'h1;
+	assign cnt_done = ~(|dcnt);
+	reg [4:0] c_state;
+	always @(posedge clk or negedge nReset)
+		if (!nReset) begin
+			core_cmd <=  4'b0000;
+			core_txd <=  1'b0;
+			shift <=  1'b0;
+			ld <=  1'b0;
+			cmd_ack <=  1'b0;
+			c_state <=  ST_IDLE;
+			ack_out <=  1'b0;
+		end
+		else if (i2c_al) begin
+			core_cmd <=  4'b0000;
+			core_txd <=  1'b0;
+			shift <=  1'b0;
+			ld <=  1'b0;
+			cmd_ack <=  1'b0;
+			c_state <=  ST_IDLE;
+			ack_out <=  1'b0;
+		end
+		else begin
+			core_txd <=  sr[7];
+			shift <=  1'b0;
+			ld <=  1'b0;
+			cmd_ack <=  1'b0;
+			case (c_state)
+				ST_IDLE:
+					if (go) begin
+						if (start) begin
+							c_state <=  ST_START;
+							core_cmd <=  4'b0001;
+						end
+						else if (read) begin
+							c_state <=  ST_READ;
+							core_cmd <=  4'b1000;
+						end
+						else if (write) begin
+							c_state <=  ST_WRITE;
+							core_cmd <=  4'b0100;
+						end
+						else begin
+							c_state <=  ST_STOP;
+							core_cmd <=  4'b0010;
+						end
+						ld <=  1'b1;
+					end
+				ST_START:
+					if (core_ack) begin
+						if (read) begin
+							c_state <=  ST_READ;
+							core_cmd <=  4'b1000;
+						end
+						else begin
+							c_state <=  ST_WRITE;
+							core_cmd <=  4'b0100;
+						end
+						ld <=  1'b1;
+					end
+				ST_WRITE:
+					if (core_ack) begin
+						if (cnt_done) begin
+							c_state <=  ST_ACK;
+							core_cmd <=  4'b1000;
+						end
+						else begin
+							c_state <=  ST_WRITE;
+							core_cmd <=  4'b0100;
+							shift <=  1'b1;
+						end
+					end
+				ST_READ:
+					if (core_ack) begin
+						if (cnt_done) begin
+							c_state <=  ST_ACK;
+							core_cmd <=  4'b0100;
+						end
+						else begin
+							c_state <=  ST_READ;
+							core_cmd <=  4'b1000;
+						end
+						shift <=  1'b1;
+						core_txd <=  ack_in;
+					end
+				ST_ACK:
+					if (core_ack) begin
+						if (stop) begin
+							c_state <=  ST_STOP;
+							core_cmd <=  4'b0010;
+						end
+						else begin
+							c_state <=  ST_IDLE;
+							core_cmd <=  4'b0000;
+							cmd_ack <=  1'b1;
+						end
+						ack_out <=  core_rxd;
+						core_txd <=  1'b1;
+					end
+					else
+						core_txd <=  ack_in;
+				ST_STOP:
+					if (core_ack) begin
+						c_state <=  ST_IDLE;
+						core_cmd <=  4'b0000;
+						cmd_ack <=  1'b1;
+					end
+			endcase
+		end
+endmodule
+module i2c_master_bit_ctrl (
+	clk,
+	nReset,
+	ena,
+	clk_cnt,
+	cmd,
+	cmd_ack,
+	busy,
+	al,
+	din,
+	dout,
+	scl_i,
+	scl_o,
+	scl_oen,
+	sda_i,
+	sda_o,
+	sda_oen
+);
+	input clk;
+	input nReset;
+	input ena;
+	input [15:0] clk_cnt;
+	input [3:0] cmd;
+	output reg cmd_ack;
+	output reg busy;
+	output reg al;
+	input din;
+	output reg dout;
+	input scl_i;
+	output wire scl_o;
+	output reg scl_oen;
+	input sda_i;
+	output wire sda_o;
+	output reg sda_oen;
+	reg [1:0] cSCL;
+	reg [1:0] cSDA;
+	reg [2:0] fSCL;
+	reg [2:0] fSDA;
+	reg sSCL;
+	reg sSDA;
+	reg dSCL;
+	reg dSDA;
+	reg dscl_oen;
+	reg sda_chk;
+	reg clk_en;
+	reg slave_wait;
+	reg [15:0] cnt;
+	reg [13:0] filter_cnt;
+	reg [17:0] c_state;
+	always @(posedge clk) dscl_oen <=  scl_oen;
+	always @(posedge clk or negedge nReset)
+		if (!nReset)
+			slave_wait <= 1'b0;
+		else
+			slave_wait <= ((scl_oen & ~dscl_oen) & ~sSCL) | (slave_wait & ~sSCL);
+	wire scl_sync = (dSCL & ~sSCL) & scl_oen;
+	always @(posedge clk or negedge nReset)
+		if (!nReset) begin
+			cnt <=  16'h0000;
+			clk_en <=  1'b1;
+		end
+		else if ((~|cnt || !ena) || scl_sync) begin
+			cnt <=  clk_cnt;
+			clk_en <=  1'b1;
+		end
+		else if (slave_wait) begin
+			cnt <=  cnt;
+			clk_en <=  1'b0;
+		end
+		else begin
+			cnt <=  cnt - 16'h0001;
+			clk_en <=  1'b0;
+		end
+	always @(posedge clk or negedge nReset)
+		if (!nReset) begin
+			cSCL <=  2'b00;
+			cSDA <=  2'b00;
+		end
+		else begin
+			cSCL <= {cSCL[0], scl_i};
+			cSDA <= {cSDA[0], sda_i};
+		end
+	always @(posedge clk or negedge nReset)
+		if (!nReset)
+			filter_cnt <= 14'h0000;
+		else if (!ena)
+			filter_cnt <= 14'h0000;
+		else if (~|filter_cnt)
+			filter_cnt <= clk_cnt >> 2;
+		else
+			filter_cnt <= filter_cnt - 1;
+	always @(posedge clk or negedge nReset)
+		if (!nReset) begin
+			fSCL <= 3'b111;
+			fSDA <= 3'b111;
+		end
+		else if (~|filter_cnt) begin
+			fSCL <= {fSCL[1:0], cSCL[1]};
+			fSDA <= {fSDA[1:0], cSDA[1]};
+		end
+	always @(posedge clk or negedge nReset)
+		if (!nReset) begin
+			sSCL <=  1'b1;
+			sSDA <=  1'b1;
+			dSCL <=  1'b1;
+			dSDA <=  1'b1;
+		end
+		else begin
+			sSCL <=  (&fSCL[2:1] | &fSCL[1:0]) | (fSCL[2] & fSCL[0]);
+			sSDA <=  (&fSDA[2:1] | &fSDA[1:0]) | (fSDA[2] & fSDA[0]);
+			dSCL <=  sSCL;
+			dSDA <=  sSDA;
+		end
+	reg sta_condition;
+	reg sto_condition;
+	always @(posedge clk or negedge nReset)
+		if (~nReset) begin
+			sta_condition <=  1'b0;
+			sto_condition <=  1'b0;
+		end
+		else begin
+			sta_condition <=  (~sSDA & dSDA) & sSCL;
+			sto_condition <=  (sSDA & ~dSDA) & sSCL;
+		end
+	always @(posedge clk or negedge nReset)
+		if (!nReset)
+			busy <=  1'b0;
+		else
+			busy <=  (sta_condition | busy) & ~sto_condition;
+	reg cmd_stop;
+	always @(posedge clk or negedge nReset)
+		if (!nReset)
+			cmd_stop <=  1'b0;
+		else if (clk_en)
+			cmd_stop <=  cmd == 4'b0010;
+	always @(posedge clk or negedge nReset)
+		if (!nReset)
+			al <=  1'b0;
+		else
+			al <=  ((sda_chk & ~sSDA) & sda_oen) | ((|c_state & sto_condition) & ~cmd_stop);
+	always @(posedge clk)
+		if (sSCL & ~dSCL)
+			dout <=  sSDA;
+	parameter [17:0] idle = 18'b000000000000000000;
+	parameter [17:0] start_a = 18'b000000000000000001;
+	parameter [17:0] start_b = 18'b000000000000000010;
+	parameter [17:0] start_c = 18'b000000000000000100;
+	parameter [17:0] start_d = 18'b000000000000001000;
+	parameter [17:0] start_e = 18'b000000000000010000;
+	parameter [17:0] stop_a = 18'b000000000000100000;
+	parameter [17:0] stop_b = 18'b000000000001000000;
+	parameter [17:0] stop_c = 18'b000000000010000000;
+	parameter [17:0] stop_d = 18'b000000000100000000;
+	parameter [17:0] rd_a = 18'b000000001000000000;
+	parameter [17:0] rd_b = 18'b000000010000000000;
+	parameter [17:0] rd_c = 18'b000000100000000000;
+	parameter [17:0] rd_d = 18'b000001000000000000;
+	parameter [17:0] wr_a = 18'b000010000000000000;
+	parameter [17:0] wr_b = 18'b000100000000000000;
+	parameter [17:0] wr_c = 18'b001000000000000000;
+	parameter [17:0] wr_d = 18'b010000000000000000;
+	always @(posedge clk or negedge nReset)
+		if (!nReset) begin
+			c_state <=  idle;
+			cmd_ack <=  1'b0;
+			scl_oen <=  1'b1;
+			sda_oen <=  1'b1;
+			sda_chk <=  1'b0;
+		end
+		else if (al) begin
+			c_state <=  idle;
+			cmd_ack <=  1'b0;
+			scl_oen <=  1'b1;
+			sda_oen <=  1'b1;
+			sda_chk <=  1'b0;
+		end
+		else begin
+			cmd_ack <=  1'b0;
+			if (clk_en)
+				case (c_state)
+					idle: begin
+						case (cmd)
+							4'b0001: c_state <=  start_a;
+							4'b0010: c_state <=  stop_a;
+							4'b0100: c_state <=  wr_a;
+							4'b1000: c_state <=  rd_a;
+							default: c_state <=  idle;
+						endcase
+						scl_oen <=  scl_oen;
+						sda_oen <=  sda_oen;
+						sda_chk <=  1'b0;
+					end
+					start_a: begin
+						c_state <=  start_b;
+						scl_oen <=  scl_oen;
+						sda_oen <=  1'b1;
+						sda_chk <=  1'b0;
+					end
+					start_b: begin
+						c_state <=  start_c;
+						scl_oen <=  1'b1;
+						sda_oen <=  1'b1;
+						sda_chk <=  1'b0;
+					end
+					start_c: begin
+						c_state <=  start_d;
+						scl_oen <=  1'b1;
+						sda_oen <=  1'b0;
+						sda_chk <=  1'b0;
+					end
+					start_d: begin
+						c_state <=  start_e;
+						scl_oen <=  1'b1;
+						sda_oen <=  1'b0;
+						sda_chk <=  1'b0;
+					end
+					start_e: begin
+						c_state <=  idle;
+						cmd_ack <=  1'b1;
+						scl_oen <=  1'b0;
+						sda_oen <=  1'b0;
+						sda_chk <=  1'b0;
+					end
+					stop_a: begin
+						c_state <=  stop_b;
+						scl_oen <=  1'b0;
+						sda_oen <=  1'b0;
+						sda_chk <=  1'b0;
+					end
+					stop_b: begin
+						c_state <=  stop_c;
+						scl_oen <=  1'b1;
+						sda_oen <=  1'b0;
+						sda_chk <=  1'b0;
+					end
+					stop_c: begin
+						c_state <=  stop_d;
+						scl_oen <=  1'b1;
+						sda_oen <=  1'b0;
+						sda_chk <=  1'b0;
+					end
+					stop_d: begin
+						c_state <=  idle;
+						cmd_ack <=  1'b1;
+						scl_oen <=  1'b1;
+						sda_oen <=  1'b1;
+						sda_chk <=  1'b0;
+					end
+					rd_a: begin
+						c_state <=  rd_b;
+						scl_oen <=  1'b0;
+						sda_oen <=  1'b1;
+						sda_chk <=  1'b0;
+					end
+					rd_b: begin
+						c_state <=  rd_c;
+						scl_oen <=  1'b1;
+						sda_oen <=  1'b1;
+						sda_chk <=  1'b0;
+					end
+					rd_c: begin
+						c_state <=  rd_d;
+						scl_oen <=  1'b1;
+						sda_oen <=  1'b1;
+						sda_chk <=  1'b0;
+					end
+					rd_d: begin
+						c_state <=  idle;
+						cmd_ack <=  1'b1;
+						scl_oen <=  1'b0;
+						sda_oen <=  1'b1;
+						sda_chk <=  1'b0;
+					end
+					wr_a: begin
+						c_state <=  wr_b;
+						scl_oen <=  1'b0;
+						sda_oen <=  din;
+						sda_chk <=  1'b0;
+					end
+					wr_b: begin
+						c_state <=  wr_c;
+						scl_oen <=  1'b1;
+						sda_oen <=  din;
+						sda_chk <=  1'b0;
+					end
+					wr_c: begin
+						c_state <=  wr_d;
+						scl_oen <=  1'b1;
+						sda_oen <=  din;
+						sda_chk <=  1'b1;
+					end
+					wr_d: begin
+						c_state <=  idle;
+						cmd_ack <=  1'b1;
+						scl_oen <=  1'b0;
+						sda_oen <=  din;
+						sda_chk <=  1'b0;
+					end
+				endcase
+		end
+	assign scl_o = 1'b0;
+	assign sda_o = 1'b0;
+endmodule
 module pit_count (
 	cnt_n,
 	cnt_flag_o,
@@ -12383,7 +13039,7 @@ module ibex_simple_system (
 	wire uart_tx_o;
 	wire pit_irq;
 	localparam signed [31:0] NUM_MASTERS = 3;
-	localparam signed [31:0] NUM_SLAVES = 4;
+	localparam signed [31:0] NUM_SLAVES = 5;
 	localparam signed [31:0] PIT_SLAVE_PORT_NUM = 4;
 	localparam [31:0] imem_base_addr = 32'ha0000000;
 	localparam [31:0] imem_size = 'h2000;
@@ -12427,7 +13083,7 @@ module ibex_simple_system (
 	endgenerate
 	genvar _arr_3103E;
 	generate
-		for (_arr_3103E = 0; _arr_3103E <= 3; _arr_3103E = _arr_3103E + 1) begin : wbs
+		for (_arr_3103E = 0; _arr_3103E <= 4; _arr_3103E = _arr_3103E + 1) begin : wbs
 			wire rst;
 			wire clk;
 			reg ack;
@@ -12441,7 +13097,7 @@ module ibex_simple_system (
 			wire [31:0] dat_m;
 			wire [31:0] dat_s;
 		end
-		for (_arr_3103E = 0; _arr_3103E <= 3; _arr_3103E = _arr_3103E + 1) begin : wbs_port_bindings
+		for (_arr_3103E = 0; _arr_3103E <= 4; _arr_3103E = _arr_3103E + 1) begin : wbs_port_bindings
 			assign wbs[_arr_3103E].rst = rst_sync_n;
 			assign wbs[_arr_3103E].clk = clk_sys;
 		end
@@ -12707,7 +13363,6 @@ module ibex_simple_system (
 			assign i_i2c_fsm.sram_access = sram_access;
 			assign i_i2c_fsm.mem_addr = mem_addr;
 			assign mem_addr = mem_addr_reg;
-			
 			assign last_read = mem_index == ((32'd8192 + 32'd4096) - 4);
 			always @(posedge clk or negedge ibex_simple_system.wbm[_mbase_wb].rst)
 				if (!ibex_simple_system.wbm[_mbase_wb].rst) begin
@@ -13196,7 +13851,7 @@ module ibex_simple_system (
 	assign gpio_o = u_gpio.ext_pad_o;
 	assign gpio_oe = u_gpio.ext_padoe_o;
 	assign gpio_aux = {uart_tx_o, 1'b0};
-	localparam _bbase_5EA00_wb = 2;
+	localparam _bbase_5EA00_wb = 3;
 	generate
 		if (1) begin : u_uart
 			localparam _mbase_wb = _bbase_5EA00_wb;
@@ -13231,7 +13886,55 @@ module ibex_simple_system (
 	assign uart_tx_int_o = u_uart.o_uart_tx_int;
 	assign u_uart.i_uart_rx = ext_pad_i[0];
 	assign uart_tx_o = u_uart.o_uart_tx;
-	localparam _bbase_3A12E_wb = 1;
+	localparam _bbase_BCA4E_wb = 1;
+	localparam _param_BCA4E_BOOT_I2C_PRESCALER = 16'd15;
+	generate
+		if (1) begin : u_i2c
+			localparam _mbase_wb = _bbase_BCA4E_wb;
+			wire int_o;
+			wire scl_pad_i;
+			wire scl_pad_o;
+			wire scl_padoen_o;
+			wire sda_pad_i;
+			wire sda_pad_o;
+			wire sda_padoen_o;
+			localparam BOOT_I2C_PRESCALER = _param_BCA4E_BOOT_I2C_PRESCALER;
+			wire [7:0] wb_dat_o_8;
+			assign ibex_simple_system.wbs[_mbase_wb].stall = 1'b0;
+			assign ibex_simple_system.wbs[_mbase_wb].err = 1'b0;
+			assign ibex_simple_system.wbs[_mbase_wb].dat_s = {{24 {1'b0}}, wb_dat_o_8};
+			wire [29:0] wb_adr_8;
+			assign wb_adr_8 = ibex_simple_system.wbs[_mbase_wb].adr >> 2;
+			wire [1:1] sv2v_tmp_u_wb_i2c_wb_ack_o;
+			always @(*) ibex_simple_system.wbs[_mbase_wb].ack = sv2v_tmp_u_wb_i2c_wb_ack_o;
+			i2c_master_top #(.BOOT_I2C_PRESCALER(BOOT_I2C_PRESCALER)) u_wb_i2c(
+				.wb_clk_i(ibex_simple_system.wbs[_mbase_wb].clk),
+				.wb_adr_i(wb_adr_8[2:0]),
+				.wb_dat_i(ibex_simple_system.wbs[_mbase_wb].dat_m[7:0]),
+				.wb_dat_o(wb_dat_o_8),
+				.wb_we_i(ibex_simple_system.wbs[_mbase_wb].we),
+				.wb_stb_i(ibex_simple_system.wbs[_mbase_wb].stb),
+				.wb_cyc_i(ibex_simple_system.wbs[_mbase_wb].cyc),
+				.wb_ack_o(sv2v_tmp_u_wb_i2c_wb_ack_o),
+				.wb_inta_o(int_o),
+				.arst_i(ibex_simple_system.wbs[_mbase_wb].rst),
+				.scl_pad_i(scl_pad_i),
+				.scl_pad_o(scl_pad_o),
+				.scl_padoen_o(scl_padoen_o),
+				.sda_pad_i(sda_pad_i),
+				.sda_pad_o(sda_pad_o),
+				.sda_padoen_o(sda_padoen_o)
+			);
+		end
+	endgenerate
+	assign i2c_int = u_i2c.int_o;
+	assign u_i2c.scl_pad_i = scl_pad_i;
+	assign scl_pad_o = u_i2c.scl_pad_o;
+	assign scl_padoen_o = u_i2c.scl_padoen_o;
+	assign u_i2c.sda_pad_i = sda_pad_i;
+	assign sda_pad_o = u_i2c.sda_pad_o;
+	assign sda_padoen_o = u_i2c.sda_padoen_o;
+	localparam _bbase_3A12E_wb = 2;
 	generate
 		if (1) begin : u_pit
 			localparam _mbase_wb = _bbase_3A12E_wb;
@@ -13273,7 +13976,7 @@ module ibex_simple_system (
 		end
 	endgenerate
 	assign pit_irq = u_pit.pit_irq_o;
-	localparam _bbase_08BBA_wb = 3;
+	localparam _bbase_08BBA_wb = 4;
 	generate
 		if (1) begin : u_spi_flash
 			localparam _mbase_wb = _bbase_08BBA_wb;
@@ -13320,15 +14023,15 @@ module ibex_simple_system (
 	localparam _bbase_C42A7_wbs = 0;
 	localparam _param_C42A7_numm = NUM_MASTERS;
 	localparam _param_C42A7_nums = NUM_SLAVES;
-	localparam _param_C42A7_base_addr = {gpio_base_addr, pit_base_addr, uart_base_addr, spi_flash_base_addr};
-	localparam _param_C42A7_size = {gpio_size, pit_size, uart_size, spi_flash_size};
+	localparam _param_C42A7_base_addr = {gpio_base_addr, i2c_base_addr, pit_base_addr, uart_base_addr, spi_flash_base_addr};
+	localparam _param_C42A7_size = {gpio_size, i2c_size, pit_size, uart_size, spi_flash_size};
 	generate
 		if (1) begin : u_wb_interconnect
 			reg _sv2v_0;
 			localparam numm = _param_C42A7_numm;
 			localparam nums = _param_C42A7_nums;
-			localparam [127:0] base_addr = _param_C42A7_base_addr;
-			localparam [127:0] size = _param_C42A7_size;
+			localparam [159:0] base_addr = _param_C42A7_base_addr;
+			localparam [159:0] size = _param_C42A7_size;
 			localparam _mbase_wbm = 0;
 			localparam _mbase_wbs = 0;
 			reg cyc;
@@ -13343,8 +14046,8 @@ module ibex_simple_system (
 			reg [31:0] dat_rd;
 			reg [2:0] gnt;
 			reg [2:0] gnt1;
-			reg [3:0] ss;
-			reg [3:0] ss1;
+			reg [4:0] ss;
+			reg [4:0] ss1;
 			wire [2:0] wbm_cyc;
 			wire [2:0] wbm_stb;
 			wire [2:0] wbm_we;
@@ -13369,16 +14072,16 @@ module ibex_simple_system (
 				assign wbm_dat_i[i * 32+:32] = ibex_simple_system.wbm[i + _mbase_wbm].dat_m;
 				assign ibex_simple_system.wbm[i + _mbase_wbm].dat_s = wbm_dat_o[i * 32+:32];
 			end
-			reg [3:0] wbs_cyc;
-			reg [3:0] wbs_stb;
-			reg [3:0] wbs_we;
-			wire [3:0] wbs_ack;
-			wire [3:0] wbs_err;
-			wire [3:0] wbs_stall;
-			reg [127:0] wbs_adr;
-			reg [15:0] wbs_sel;
-			wire [127:0] wbs_dat_i;
-			reg [127:0] wbs_dat_o;
+			reg [4:0] wbs_cyc;
+			reg [4:0] wbs_stb;
+			reg [4:0] wbs_we;
+			wire [4:0] wbs_ack;
+			wire [4:0] wbs_err;
+			wire [4:0] wbs_stall;
+			reg [159:0] wbs_adr;
+			reg [19:0] wbs_sel;
+			wire [159:0] wbs_dat_i;
+			reg [159:0] wbs_dat_o;
 			genvar _gv_i_35;
 			for (_gv_i_35 = 0; _gv_i_35 < nums; _gv_i_35 = _gv_i_35 + 1) begin : genblk2
 				localparam i = _gv_i_35;
@@ -13398,7 +14101,7 @@ module ibex_simple_system (
 				if (_sv2v_0)
 					;
 				for (i = 0; i < nums; i = i + 1)
-					ss[i] = (adr >= base_addr[(3 - i) * 32+:32]) && (adr < (base_addr[(3 - i) * 32+:32] + size[(3 - i) * 32+:32]));
+					ss[i] = (adr >= base_addr[(4 - i) * 32+:32]) && (adr < (base_addr[(4 - i) * 32+:32] + size[(4 - i) * 32+:32]));
 			end
 			always @(posedge ibex_simple_system.wbs[0].clk or negedge ibex_simple_system.wbs[0].rst)
 				if (!ibex_simple_system.wbs[0].rst)

@@ -13075,8 +13075,6 @@ module ibex_simple_system (
 			wire err;
 			wire [31:0] dat_m;
 			wire [31:0] dat_s;
-		end
-		for (_arr_55720 = 0; _arr_55720 <= 2; _arr_55720 = _arr_55720 + 1) begin : wbm_port_bindings
 			assign wbm[_arr_55720].rst = rst_sync_n;
 			assign wbm[_arr_55720].clk = clk_sys;
 		end

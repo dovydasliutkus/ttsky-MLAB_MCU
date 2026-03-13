@@ -11092,637 +11092,6 @@ module pit_wb_bus (
 			endcase
 	end
 endmodule
-module wbuart (
-	i_clk,
-	i_reset_n,
-	i_wb_cyc,
-	i_wb_stb,
-	i_wb_we,
-	i_wb_addr,
-	i_wb_data,
-	i_wb_sel,
-	o_wb_stall,
-	o_wb_ack,
-	o_wb_data,
-	i_uart_rx,
-	o_uart_tx,
-	o_uart_rx_int,
-	o_uart_tx_int
-);
-	parameter [29:0] INITIAL_SETUP = 31'd868;
-	input wire i_clk;
-	input wire i_reset_n;
-	input wire i_wb_cyc;
-	input wire i_wb_stb;
-	input wire i_wb_we;
-	input wire [1:0] i_wb_addr;
-	input wire [31:0] i_wb_data;
-	input wire [3:0] i_wb_sel;
-	output wire o_wb_stall;
-	output reg o_wb_ack;
-	output reg [31:0] o_wb_data;
-	input wire i_uart_rx;
-	output wire o_uart_tx;
-	output wire o_uart_rx_int;
-	output wire o_uart_tx_int;
-	localparam [1:0] UART_SETUP = 2'b00;
-	localparam [1:0] UART_CRREG = 2'b01;
-	localparam [1:0] UART_RXREG = 2'b10;
-	localparam [1:0] UART_TXREG = 2'b11;
-	wire tx_busy;
-	reg tx_busy_d;
-	reg [29:0] uart_setup;
-	wire [5:0] cr_reg;
-	reg uart_tx_en;
-	reg uart_rx_en;
-	wire rx_stb;
-	wire rx_break;
-	wire rx_perr;
-	wire rx_ferr;
-	wire ck_uart;
-	wire [7:0] rx_uart_data;
-	reg rx_uart_reset;
-	reg rx_empty;
-	reg rx_empty_d;
-	reg r_rx_perr;
-	reg r_rx_overflow;
-	wire w_uart_rx;
-	wire [13:0] rx_reg;
-	wire tx_break;
-	wire [7:0] tx_data;
-	reg [7:0] r_tx_data;
-	reg tx_uart_reset;
-	wire w_uart_tx;
-	reg tx_empty_n;
-	wire [11:0] tx_reg;
-	reg tx_int_en;
-	reg rx_int_en;
-	reg [1:0] r_wb_addr;
-	reg r_wb_ack;
-	assign o_uart_tx = (uart_tx_en ? w_uart_tx : 1'bz);
-	assign w_uart_rx = (uart_rx_en ? i_uart_rx : 1'b1);
-	always @(posedge i_clk or negedge i_reset_n)
-		if (!i_reset_n)
-			uart_setup <= INITIAL_SETUP;
-		else if ((i_wb_stb && (i_wb_addr[1:0] == UART_SETUP)) && i_wb_we) begin
-			if (i_wb_sel[0])
-				uart_setup[7:0] <= i_wb_data[7:0];
-			if (i_wb_sel[1])
-				uart_setup[15:8] <= i_wb_data[15:8];
-			if (i_wb_sel[2])
-				uart_setup[23:16] <= i_wb_data[23:16];
-			if (i_wb_sel[3])
-				uart_setup[29:24] <= i_wb_data[29:24];
-		end
-	always @(posedge i_clk or negedge i_reset_n)
-		if (!i_reset_n)
-			uart_rx_en <= 1'b0;
-		else if (((i_wb_stb && (i_wb_addr[1:0] == UART_CRREG)) && i_wb_we) && i_wb_sel[0])
-			uart_rx_en <= i_wb_data[0];
-	always @(posedge i_clk or negedge i_reset_n)
-		if (!i_reset_n)
-			uart_tx_en <= 1'b0;
-		else if (((i_wb_stb && (i_wb_addr[1:0] == UART_CRREG)) && i_wb_we) && i_wb_sel[0])
-			uart_tx_en <= i_wb_data[3];
-	assign cr_reg = {tx_uart_reset, tx_int_en, uart_tx_en, rx_uart_reset, rx_int_en, uart_rx_en};
-	rxuart #(.INITIAL_SETUP(INITIAL_SETUP)) rx(
-		.i_clk(i_clk),
-		.i_reset_n(i_reset_n && ~rx_uart_reset),
-		.i_setup({1'b0, uart_setup}),
-		.i_uart_rx(w_uart_rx),
-		.o_wr(rx_stb),
-		.o_data(rx_uart_data),
-		.o_break(rx_break),
-		.o_parity_err(rx_perr),
-		.o_frame_err(rx_ferr),
-		.o_ck_uart(ck_uart)
-	);
-	always @(posedge i_clk or negedge i_reset_n)
-		if (!i_reset_n)
-			rx_int_en <= 1'b0;
-		else if (((i_wb_stb && (i_wb_addr[1:0] == UART_CRREG)) && i_wb_we) && i_wb_sel[0])
-			rx_int_en <= i_wb_data[1];
-	always @(posedge i_clk or negedge i_reset_n)
-		if (!i_reset_n) begin
-			rx_empty <= 1'b0;
-			rx_empty_d <= 1'b0;
-			r_rx_overflow <= 1'b0;
-		end
-		else if (rx_stb && !rx_empty_d)
-			rx_empty_d <= 1'b1;
-		else if (rx_stb && rx_empty_d)
-			r_rx_overflow <= 1'b0;
-		else if ((rx_empty && !r_wb_ack) && (r_wb_addr[1:0] == UART_RXREG)) begin
-			rx_empty <= 1'b0;
-			rx_empty_d <= 1'b0;
-			r_rx_overflow <= 1'b0;
-		end
-		else if ((!rx_empty && i_wb_stb) && (i_wb_addr[1:0] == UART_RXREG))
-			rx_empty <= rx_empty_d;
-	assign o_uart_rx_int = (rx_int_en ? rx_empty_d : 1'b0);
-	always @(posedge i_clk)
-		if (rx_uart_reset || rx_break)
-			r_rx_perr <= 1'b0;
-		else if ((i_wb_stb && (i_wb_addr[1:0] == UART_RXREG)) && i_wb_we) begin
-			if (i_wb_sel[1])
-				r_rx_perr <= r_rx_perr && ~i_wb_data[9];
-		end
-		else if (rx_stb)
-			r_rx_perr <= r_rx_perr || rx_perr;
-	always @(posedge i_clk or negedge i_reset_n)
-		if (!i_reset_n)
-			rx_uart_reset <= 1'b1;
-		else if ((i_wb_stb && (i_wb_addr[1:0] == UART_SETUP)) && i_wb_we)
-			rx_uart_reset <= 1'b1;
-		else if (((i_wb_stb && (i_wb_addr[1:0] == UART_CRREG)) && i_wb_we) && i_wb_sel[0])
-			rx_uart_reset <= i_wb_data[2];
-		else
-			rx_uart_reset <= 1'b0;
-	assign rx_reg = {ck_uart, rx_break, r_rx_overflow, rx_ferr, r_rx_perr, rx_empty, rx_uart_data};
-	reg r_tx_break;
-	always @(posedge i_clk or negedge i_reset_n)
-		if (!i_reset_n)
-			r_tx_break <= 1'b0;
-		else if (((i_wb_stb && (i_wb_addr[1:0] == UART_TXREG)) && i_wb_we) && i_wb_sel[1])
-			r_tx_break <= i_wb_data[10];
-	assign tx_break = r_tx_break;
-	always @(posedge i_clk or negedge i_reset_n)
-		if (!i_reset_n)
-			tx_uart_reset <= 1'b1;
-		else if ((i_wb_stb && (i_wb_addr[1:0] == UART_SETUP)) && i_wb_we)
-			tx_uart_reset <= 1'b1;
-		else if (((i_wb_stb && (i_wb_addr[1:0] == UART_CRREG)) && i_wb_we) && i_wb_sel[0])
-			tx_uart_reset <= i_wb_data[5];
-		else
-			tx_uart_reset <= 1'b0;
-	txuart #(.INITIAL_SETUP(INITIAL_SETUP)) tx(
-		.i_clk(i_clk),
-		.i_reset_n(i_reset_n),
-		.i_setup({1'b0, uart_setup}),
-		.i_break(r_tx_break),
-		.i_wr(tx_empty_n),
-		.i_data(tx_data),
-		.i_cts_n(1'b0),
-		.o_uart_tx(w_uart_tx),
-		.o_busy(tx_busy)
-	);
-	always @(posedge i_clk or negedge i_reset_n)
-		if (!i_reset_n)
-			tx_int_en <= 1'b0;
-		else if (((i_wb_stb && (i_wb_addr[1:0] == UART_CRREG)) && i_wb_we) && i_wb_sel[0])
-			tx_int_en <= i_wb_data[4];
-	assign o_uart_tx_int = (tx_int_en ? ~tx_busy : 1'b0);
-	always @(posedge i_clk) tx_busy_d <= tx_busy;
-	always @(posedge i_clk or negedge i_reset_n)
-		if (!i_reset_n) begin
-			tx_empty_n <= 1'b0;
-			r_tx_data <= 8'b00000000;
-		end
-		else if (((i_wb_stb && (i_wb_addr[1:0] == UART_TXREG)) && i_wb_we) && i_wb_sel[0]) begin
-			r_tx_data <= i_wb_data[7:0];
-			tx_empty_n <= 1'b1;
-		end
-		else if (!tx_busy_d && tx_busy)
-			tx_empty_n <= 1'b0;
-	assign tx_data = r_tx_data;
-	assign tx_reg = {w_uart_tx, tx_break, tx_busy, tx_empty_n, r_tx_data};
-	always @(posedge i_clk) r_wb_addr <= i_wb_addr;
-	always @(posedge i_clk or negedge i_reset_n)
-		if (!i_reset_n)
-			r_wb_ack <= 1'b0;
-		else
-			r_wb_ack <= i_wb_stb;
-	always @(posedge i_clk or negedge i_reset_n)
-		if (!i_reset_n)
-			o_wb_ack <= 1'b0;
-		else
-			o_wb_ack <= r_wb_ack && i_wb_cyc;
-	always @(posedge i_clk)
-		casez (r_wb_addr)
-			UART_SETUP: o_wb_data <= uart_setup;
-			UART_CRREG: o_wb_data <= {26'b00000000000000000000000000, cr_reg};
-			UART_RXREG: o_wb_data <= {18'b000000000000000000, rx_reg};
-			UART_TXREG: o_wb_data <= {20'b00000000000000000000, tx_reg};
-		endcase
-	assign o_wb_stall = 1'b0;
-	wire unused;
-	assign unused = &{1'b0, i_wb_data[31]};
-endmodule
-module rxuart (
-	i_clk,
-	i_reset_n,
-	i_setup,
-	i_uart_rx,
-	o_wr,
-	o_data,
-	o_break,
-	o_parity_err,
-	o_frame_err,
-	o_ck_uart
-);
-	parameter [30:0] INITIAL_SETUP = 31'd868;
-	localparam [3:0] RXU_BIT_ZERO = 4'h0;
-	localparam [3:0] RXU_BIT_ONE = 4'h1;
-	localparam [3:0] RXU_BIT_TWO = 4'h2;
-	localparam [3:0] RXU_BIT_THREE = 4'h3;
-	localparam [3:0] RXU_BIT_SEVEN = 4'h7;
-	localparam [3:0] RXU_PARITY = 4'h8;
-	localparam [3:0] RXU_STOP = 4'h9;
-	localparam [3:0] RXU_SECOND_STOP = 4'ha;
-	localparam [3:0] RXU_BREAK = 4'hd;
-	localparam [3:0] RXU_RESET_IDLE = 4'he;
-	localparam [3:0] RXU_IDLE = 4'hf;
-	input wire i_clk;
-	input wire i_reset_n;
-	input wire [30:0] i_setup;
-	input wire i_uart_rx;
-	output reg o_wr;
-	output reg [7:0] o_data;
-	output reg o_break;
-	output reg o_parity_err;
-	output reg o_frame_err;
-	output wire o_ck_uart;
-	wire [23:0] clocks_per_baud;
-	wire [23:0] half_baud;
-	wire [1:0] data_bits;
-	wire use_parity;
-	wire parity_even;
-	wire dblstop;
-	wire fixd_parity;
-	reg [29:0] r_setup;
-	reg [3:0] state;
-	reg [23:0] baud_counter;
-	reg zero_baud_counter;
-	reg q_uart;
-	reg qq_uart;
-	reg ck_uart;
-	reg [27:0] chg_counter;
-	wire [27:0] break_condition;
-	reg line_synch;
-	reg half_baud_time;
-	reg [7:0] data_reg;
-	reg calc_parity;
-	reg pre_wr;
-	assign clocks_per_baud = r_setup[23:0];
-	assign data_bits = r_setup[29:28];
-	assign dblstop = r_setup[27];
-	assign use_parity = r_setup[26];
-	assign fixd_parity = r_setup[25];
-	assign parity_even = r_setup[24];
-	assign break_condition = {r_setup[23:0], 4'h0};
-	assign half_baud = {1'h0, r_setup[23:1]} - 24'h000001;
-	always @(posedge i_clk or negedge i_reset_n)
-		if (!i_reset_n)
-			{ck_uart, qq_uart, q_uart} <= 3'h0;
-		else
-			{ck_uart, qq_uart, q_uart} <= {qq_uart, q_uart, i_uart_rx};
-	assign o_ck_uart = ck_uart;
-	always @(posedge i_clk or negedge i_reset_n)
-		if (!i_reset_n)
-			chg_counter <= 0;
-		else if (qq_uart != ck_uart)
-			chg_counter <= 0;
-		else if (chg_counter < break_condition)
-			chg_counter <= chg_counter + 1;
-	always @(posedge i_clk or negedge i_reset_n)
-		if (!i_reset_n)
-			o_break <= 1'b0;
-		else
-			o_break <= ((chg_counter >= break_condition) && ~ck_uart ? 1'b1 : 1'b0);
-	always @(posedge i_clk or negedge i_reset_n)
-		if (!i_reset_n)
-			line_synch <= 1'b0;
-		else
-			line_synch <= (chg_counter >= break_condition) && ck_uart;
-	always @(posedge i_clk or negedge i_reset_n)
-		if (!i_reset_n)
-			half_baud_time <= 1'b0;
-		else
-			half_baud_time <= ~ck_uart && (chg_counter >= {4'h0, half_baud});
-	always @(posedge i_clk or negedge i_reset_n)
-		if (!i_reset_n)
-			r_setup <= INITIAL_SETUP[29:0];
-		else if (state >= RXU_RESET_IDLE)
-			r_setup <= i_setup[29:0];
-	always @(posedge i_clk or negedge i_reset_n)
-		if (!i_reset_n)
-			state <= RXU_RESET_IDLE;
-		else if (state == RXU_RESET_IDLE) begin
-			if (line_synch)
-				state <= RXU_IDLE;
-			else
-				state <= RXU_RESET_IDLE;
-		end
-		else if (o_break)
-			state <= RXU_BREAK;
-		else if (state == RXU_BREAK) begin
-			if (ck_uart)
-				state <= RXU_IDLE;
-			else
-				state <= RXU_BREAK;
-		end
-		else if (state == RXU_IDLE) begin
-			if (!ck_uart && half_baud_time)
-				case (data_bits)
-					2'b00: state <= RXU_BIT_ZERO;
-					2'b01: state <= RXU_BIT_ONE;
-					2'b10: state <= RXU_BIT_TWO;
-					2'b11: state <= RXU_BIT_THREE;
-				endcase
-			else
-				state <= RXU_IDLE;
-		end
-		else if (zero_baud_counter) begin
-			if (state < RXU_BIT_SEVEN)
-				state <= state + 1;
-			else if (state == RXU_BIT_SEVEN)
-				state <= (use_parity ? RXU_PARITY : RXU_STOP);
-			else if (state == RXU_PARITY)
-				state <= RXU_STOP;
-			else if (state == RXU_STOP) begin
-				if (!ck_uart)
-					state <= RXU_RESET_IDLE;
-				else if (dblstop)
-					state <= RXU_SECOND_STOP;
-				else
-					state <= RXU_IDLE;
-			end
-			else if (!ck_uart)
-				state <= RXU_RESET_IDLE;
-			else
-				state <= RXU_IDLE;
-		end
-	always @(posedge i_clk)
-		if (zero_baud_counter && (state != RXU_PARITY))
-			data_reg <= {ck_uart, data_reg[7:1]};
-	always @(posedge i_clk or negedge i_reset_n)
-		if (!i_reset_n)
-			calc_parity <= 0;
-		else if (state == RXU_IDLE)
-			calc_parity <= 0;
-		else if (zero_baud_counter)
-			calc_parity <= calc_parity ^ ck_uart;
-	always @(posedge i_clk or negedge i_reset_n)
-		if (!i_reset_n)
-			o_parity_err <= 1'b0;
-		else if (zero_baud_counter && (state == RXU_PARITY)) begin
-			if (fixd_parity)
-				o_parity_err <= ck_uart ^ parity_even;
-			else if (parity_even)
-				o_parity_err <= calc_parity != ck_uart;
-			else
-				o_parity_err <= calc_parity == ck_uart;
-		end
-		else if (state >= RXU_BREAK)
-			o_parity_err <= 1'b0;
-	always @(posedge i_clk or negedge i_reset_n)
-		if (!i_reset_n)
-			o_frame_err <= 1'b0;
-		else if (zero_baud_counter && ((state == RXU_STOP) || (state == RXU_SECOND_STOP)))
-			o_frame_err <= o_frame_err || ~ck_uart;
-		else if (zero_baud_counter || (state >= RXU_BREAK))
-			o_frame_err <= 1'b0;
-	always @(posedge i_clk or negedge i_reset_n)
-		if (!i_reset_n) begin
-			pre_wr <= 1'b0;
-			o_data <= 8'h00;
-		end
-		else if (zero_baud_counter && (state == RXU_STOP)) begin
-			pre_wr <= 1'b1;
-			case (data_bits)
-				2'b00: o_data <= data_reg;
-				2'b01: o_data <= {1'b0, data_reg[7:1]};
-				2'b10: o_data <= {2'b00, data_reg[7:2]};
-				2'b11: o_data <= {3'b000, data_reg[7:3]};
-			endcase
-		end
-		else if (zero_baud_counter || (state == RXU_IDLE))
-			pre_wr <= 1'b0;
-	always @(posedge i_clk or negedge i_reset_n)
-		if (!i_reset_n)
-			o_wr <= 1'b0;
-		else if (zero_baud_counter || (state == RXU_IDLE))
-			o_wr <= pre_wr;
-		else
-			o_wr <= 1'b0;
-	always @(posedge i_clk or negedge i_reset_n)
-		if (!i_reset_n)
-			baud_counter <= INITIAL_SETUP[23:0] - 1;
-		else if (zero_baud_counter)
-			baud_counter <= clocks_per_baud - 1;
-		else
-			case (state)
-				RXU_RESET_IDLE: baud_counter <= clocks_per_baud - 1;
-				RXU_BREAK: baud_counter <= clocks_per_baud - 1;
-				RXU_IDLE: baud_counter <= clocks_per_baud - 1;
-				default: baud_counter <= baud_counter - 1;
-			endcase
-	always @(posedge i_clk)
-		if (state == RXU_IDLE)
-			zero_baud_counter <= 1'b0;
-		else
-			zero_baud_counter <= baud_counter == 1;
-endmodule
-module txuart (
-	i_clk,
-	i_reset_n,
-	i_setup,
-	i_break,
-	i_wr,
-	i_data,
-	i_cts_n,
-	o_uart_tx,
-	o_busy
-);
-	parameter [30:0] INITIAL_SETUP = 31'd868;
-	localparam [3:0] TXU_BIT_ZERO = 4'h0;
-	localparam [3:0] TXU_BIT_ONE = 4'h1;
-	localparam [3:0] TXU_BIT_TWO = 4'h2;
-	localparam [3:0] TXU_BIT_THREE = 4'h3;
-	localparam [3:0] TXU_BIT_SEVEN = 4'h7;
-	localparam [3:0] TXU_PARITY = 4'h8;
-	localparam [3:0] TXU_STOP = 4'h9;
-	localparam [3:0] TXU_SECOND_STOP = 4'ha;
-	localparam [3:0] TXU_BREAK = 4'he;
-	localparam [3:0] TXU_IDLE = 4'hf;
-	input wire i_clk;
-	input wire i_reset_n;
-	input wire [30:0] i_setup;
-	input wire i_break;
-	input wire i_wr;
-	input wire [7:0] i_data;
-	input wire i_cts_n;
-	output reg o_uart_tx;
-	output wire o_busy;
-	wire [27:0] clocks_per_baud;
-	wire [27:0] break_condition;
-	wire [1:0] i_data_bits;
-	wire [1:0] data_bits;
-	wire use_parity;
-	wire parity_odd;
-	wire dblstop;
-	wire fixd_parity;
-	wire fixdp_value;
-	wire hw_flow_control;
-	wire i_parity_odd;
-	reg [30:0] r_setup;
-	assign clocks_per_baud = {4'h0, r_setup[23:0]};
-	assign break_condition = {r_setup[23:0], 4'h0};
-	assign hw_flow_control = !r_setup[30];
-	assign i_data_bits = i_setup[29:28];
-	assign data_bits = r_setup[29:28];
-	assign dblstop = r_setup[27];
-	assign use_parity = r_setup[26];
-	assign fixd_parity = r_setup[25];
-	assign i_parity_odd = i_setup[24];
-	assign parity_odd = r_setup[24];
-	assign fixdp_value = r_setup[24];
-	reg [27:0] baud_counter;
-	reg [3:0] state;
-	reg [7:0] lcl_data;
-	reg calc_parity;
-	reg r_busy;
-	reg zero_baud_counter;
-	reg last_state;
-	reg q_cts_n;
-	reg qq_cts_n;
-	reg ck_cts;
-	always @(posedge i_clk or negedge i_reset_n)
-		if (!i_reset_n)
-			{qq_cts_n, q_cts_n} <= 2'b11;
-		else
-			{qq_cts_n, q_cts_n} <= {q_cts_n, i_cts_n};
-	always @(posedge i_clk or negedge i_reset_n)
-		if (!i_reset_n)
-			ck_cts <= 1'b0;
-		else
-			ck_cts <= !qq_cts_n || !hw_flow_control;
-	always @(posedge i_clk or negedge i_reset_n)
-		if (!i_reset_n) begin
-			r_busy <= 1'b1;
-			state <= TXU_IDLE;
-		end
-		else if (i_break) begin
-			state <= TXU_BREAK;
-			r_busy <= 1'b1;
-		end
-		else if (!zero_baud_counter)
-			r_busy <= 1'b1;
-		else if (state == TXU_BREAK) begin
-			state <= TXU_IDLE;
-			r_busy <= !ck_cts;
-		end
-		else if (state == TXU_IDLE) begin
-			if (i_wr && !r_busy) begin
-				r_busy <= 1'b1;
-				case (i_data_bits)
-					2'b00: state <= TXU_BIT_ZERO;
-					2'b01: state <= TXU_BIT_ONE;
-					2'b10: state <= TXU_BIT_TWO;
-					2'b11: state <= TXU_BIT_THREE;
-				endcase
-			end
-			else
-				r_busy <= !ck_cts;
-		end
-		else begin
-			r_busy <= 1'b1;
-			if (state[3] == 0) begin
-				if (state == TXU_BIT_SEVEN)
-					state <= (use_parity ? TXU_PARITY : TXU_STOP);
-				else
-					state <= state + 1;
-			end
-			else if (state == TXU_PARITY)
-				state <= TXU_STOP;
-			else if (state == TXU_STOP) begin
-				if (dblstop)
-					state <= TXU_SECOND_STOP;
-				else
-					state <= TXU_IDLE;
-			end
-			else
-				state <= TXU_IDLE;
-		end
-	assign o_busy = r_busy;
-	always @(posedge i_clk or negedge i_reset_n)
-		if (!i_reset_n)
-			r_setup <= INITIAL_SETUP;
-		else if (!o_busy)
-			r_setup <= i_setup;
-	always @(posedge i_clk or negedge i_reset_n)
-		if (!i_reset_n)
-			lcl_data <= 8'hff;
-		else if (!r_busy)
-			lcl_data <= i_data;
-		else if (zero_baud_counter)
-			lcl_data <= {1'b0, lcl_data[7:1]};
-	always @(posedge i_clk or negedge i_reset_n)
-		if (!i_reset_n)
-			o_uart_tx <= 1'b1;
-		else if (i_break || (i_wr && !r_busy))
-			o_uart_tx <= 1'b0;
-		else if (zero_baud_counter)
-			casez (state)
-				4'b0zzz: o_uart_tx <= lcl_data[0];
-				TXU_PARITY: o_uart_tx <= calc_parity;
-				default: o_uart_tx <= 1'b1;
-			endcase
-	always @(posedge i_clk or negedge i_reset_n)
-		if (!i_reset_n)
-			calc_parity <= 1'b0;
-		else if (!o_busy)
-			calc_parity <= i_setup[24];
-		else if (fixd_parity)
-			calc_parity <= fixdp_value;
-		else if (zero_baud_counter) begin
-			if (state[3] == 0)
-				calc_parity <= calc_parity ^ lcl_data[0];
-			else if (state == TXU_IDLE)
-				calc_parity <= parity_odd;
-		end
-		else if (!r_busy)
-			calc_parity <= parity_odd;
-	always @(posedge i_clk or negedge i_reset_n)
-		if (!i_reset_n) begin
-			baud_counter <= {INITIAL_SETUP[23:0], 4'h0};
-			zero_baud_counter <= 1'b0;
-		end
-		else if (i_break) begin
-			baud_counter <= break_condition;
-			zero_baud_counter <= 1'b0;
-		end
-		else begin
-			zero_baud_counter <= baud_counter == 28'h0000001;
-			if (!zero_baud_counter)
-				baud_counter <= baud_counter - 28'h0000001;
-			else if (state == TXU_BREAK) begin
-				baud_counter <= 0;
-				zero_baud_counter <= 1'b1;
-			end
-			else if (state == TXU_IDLE) begin
-				baud_counter <= 28'h0000000;
-				zero_baud_counter <= 1'b1;
-				if (i_wr && !r_busy) begin
-					baud_counter <= {4'h0, i_setup[23:0]} - 28'h0000001;
-					zero_baud_counter <= 1'b0;
-				end
-			end
-			else if (last_state)
-				baud_counter <= clocks_per_baud - 28'h0000002;
-			else
-				baud_counter <= clocks_per_baud - 28'h0000001;
-		end
-	always @(posedge i_clk or negedge i_reset_n)
-		if (!i_reset_n)
-			last_state <= 1'b0;
-		else if (dblstop)
-			last_state <= state == TXU_SECOND_STOP;
-		else
-			last_state <= state == TXU_STOP;
-	wire unused;
-	assign unused = &{1'b0, i_parity_odd, data_bits};
-endmodule
 module qflexpress (
 	i_clk,
 	i_reset,
@@ -12373,7 +11742,7 @@ module ibex_simple_system (
 	wire uart_tx_o;
 	wire pit_irq;
 	localparam signed [31:0] NUM_MASTERS = 2;
-	localparam signed [31:0] NUM_SLAVES = 4;
+	localparam signed [31:0] NUM_SLAVES = 3;
 	localparam signed [31:0] PIT_SLAVE_PORT_NUM = 4;
 	localparam [31:0] imem_base_addr = 32'ha0000000;
 	localparam [31:0] imem_size = 'h2000;
@@ -12417,7 +11786,7 @@ module ibex_simple_system (
 	endgenerate
 	genvar _arr_3103E;
 	generate
-		for (_arr_3103E = 0; _arr_3103E <= 3; _arr_3103E = _arr_3103E + 1) begin : wbs
+		for (_arr_3103E = 0; _arr_3103E <= 2; _arr_3103E = _arr_3103E + 1) begin : wbs
 			wire rst;
 			wire clk;
 			reg ack;
@@ -12431,12 +11800,14 @@ module ibex_simple_system (
 			wire [31:0] dat_m;
 			wire [31:0] dat_s;
 		end
-		for (_arr_3103E = 0; _arr_3103E <= 3; _arr_3103E = _arr_3103E + 1) begin : wbs_port_bindings
+		for (_arr_3103E = 0; _arr_3103E <= 2; _arr_3103E = _arr_3103E + 1) begin : wbs_port_bindings
 			assign wbs[_arr_3103E].rst = rst_sync_n;
 			assign wbs[_arr_3103E].clk = clk_sys;
 		end
 	endgenerate
 	assign rst_core_n = rst_sync_n;
+	assign uart_rx_int_o = 1'b0;
+	assign uart_tx_int_o = 1'b0;
 	localparam signed [31:0] ibex_pkg_IbexMuBiWidth = 4;
 	localparam [3:0] ibex_pkg_IbexMuBiOn = 4'b0101;
 	localparam _bbase_4E807_instr_wb = 1;
@@ -12722,41 +12093,6 @@ module ibex_simple_system (
 	assign gpio_o = u_gpio.ext_pad_o;
 	assign gpio_oe = u_gpio.ext_padoe_o;
 	assign gpio_aux = {uart_tx_o, 1'b0};
-	localparam _bbase_5EA00_wb = 2;
-	generate
-		if (1) begin : u_uart
-			localparam _mbase_wb = _bbase_5EA00_wb;
-			wire o_uart_rx_int;
-			wire o_uart_tx_int;
-			wire i_uart_rx;
-			wire o_uart_tx;
-			localparam [31:0] INITIAL_SETUP = 31'd868;
-			assign ibex_simple_system.wbs[_mbase_wb].err = 1'b0;
-			wire [1:1] sv2v_tmp_u_wb_uart_o_wb_ack;
-			always @(*) ibex_simple_system.wbs[_mbase_wb].ack = sv2v_tmp_u_wb_uart_o_wb_ack;
-			wbuart #(.INITIAL_SETUP(INITIAL_SETUP)) u_wb_uart(
-				.i_clk(ibex_simple_system.wbs[_mbase_wb].clk),
-				.i_reset_n(ibex_simple_system.wbs[_mbase_wb].rst),
-				.i_wb_cyc(ibex_simple_system.wbs[_mbase_wb].cyc),
-				.i_wb_stb(ibex_simple_system.wbs[_mbase_wb].stb),
-				.i_wb_we(ibex_simple_system.wbs[_mbase_wb].we),
-				.i_wb_addr(ibex_simple_system.wbs[_mbase_wb].adr[3:2]),
-				.i_wb_sel(ibex_simple_system.wbs[_mbase_wb].sel),
-				.o_wb_stall(ibex_simple_system.wbs[_mbase_wb].stall),
-				.o_wb_ack(sv2v_tmp_u_wb_uart_o_wb_ack),
-				.i_wb_data(ibex_simple_system.wbs[_mbase_wb].dat_m),
-				.o_wb_data(ibex_simple_system.wbs[_mbase_wb].dat_s),
-				.i_uart_rx(i_uart_rx),
-				.o_uart_tx(o_uart_tx),
-				.o_uart_rx_int(o_uart_rx_int),
-				.o_uart_tx_int(o_uart_tx_int)
-			);
-		end
-	endgenerate
-	assign uart_rx_int_o = u_uart.o_uart_rx_int;
-	assign uart_tx_int_o = u_uart.o_uart_tx_int;
-	assign u_uart.i_uart_rx = ext_pad_i[0];
-	assign uart_tx_o = u_uart.o_uart_tx;
 	localparam _bbase_3A12E_wb = 1;
 	generate
 		if (1) begin : u_pit
@@ -12799,7 +12135,7 @@ module ibex_simple_system (
 		end
 	endgenerate
 	assign pit_irq = u_pit.pit_irq_o;
-	localparam _bbase_08BBA_wb = 3;
+	localparam _bbase_08BBA_wb = 2;
 	generate
 		if (1) begin : u_spi_flash
 			localparam _mbase_wb = _bbase_08BBA_wb;
@@ -12846,15 +12182,15 @@ module ibex_simple_system (
 	localparam _bbase_C42A7_wbs = 0;
 	localparam _param_C42A7_numm = NUM_MASTERS;
 	localparam _param_C42A7_nums = NUM_SLAVES;
-	localparam _param_C42A7_base_addr = {gpio_base_addr, pit_base_addr, uart_base_addr, spi_flash_base_addr};
-	localparam _param_C42A7_size = {gpio_size, pit_size, uart_size, spi_flash_size};
+	localparam _param_C42A7_base_addr = {gpio_base_addr, pit_base_addr, spi_flash_base_addr};
+	localparam _param_C42A7_size = {gpio_size, pit_size, spi_flash_size};
 	generate
 		if (1) begin : u_wb_interconnect
 			reg _sv2v_0;
 			localparam numm = _param_C42A7_numm;
 			localparam nums = _param_C42A7_nums;
-			localparam [127:0] base_addr = _param_C42A7_base_addr;
-			localparam [127:0] size = _param_C42A7_size;
+			localparam [95:0] base_addr = _param_C42A7_base_addr;
+			localparam [95:0] size = _param_C42A7_size;
 			localparam _mbase_wbm = 0;
 			localparam _mbase_wbs = 0;
 			reg cyc;
@@ -12869,8 +12205,8 @@ module ibex_simple_system (
 			reg [31:0] dat_rd;
 			reg [1:0] gnt;
 			reg [1:0] gnt1;
-			reg [3:0] ss;
-			reg [3:0] ss1;
+			reg [2:0] ss;
+			reg [2:0] ss1;
 			wire [1:0] wbm_cyc;
 			wire [1:0] wbm_stb;
 			wire [1:0] wbm_we;
@@ -12895,16 +12231,16 @@ module ibex_simple_system (
 				assign wbm_dat_i[i * 32+:32] = ibex_simple_system.wbm[i + _mbase_wbm].dat_m;
 				assign ibex_simple_system.wbm[i + _mbase_wbm].dat_s = wbm_dat_o[i * 32+:32];
 			end
-			reg [3:0] wbs_cyc;
-			reg [3:0] wbs_stb;
-			reg [3:0] wbs_we;
-			wire [3:0] wbs_ack;
-			wire [3:0] wbs_err;
-			wire [3:0] wbs_stall;
-			reg [127:0] wbs_adr;
-			reg [15:0] wbs_sel;
-			wire [127:0] wbs_dat_i;
-			reg [127:0] wbs_dat_o;
+			reg [2:0] wbs_cyc;
+			reg [2:0] wbs_stb;
+			reg [2:0] wbs_we;
+			wire [2:0] wbs_ack;
+			wire [2:0] wbs_err;
+			wire [2:0] wbs_stall;
+			reg [95:0] wbs_adr;
+			reg [11:0] wbs_sel;
+			wire [95:0] wbs_dat_i;
+			reg [95:0] wbs_dat_o;
 			genvar _gv_i_35;
 			for (_gv_i_35 = 0; _gv_i_35 < nums; _gv_i_35 = _gv_i_35 + 1) begin : genblk2
 				localparam i = _gv_i_35;
@@ -12924,7 +12260,7 @@ module ibex_simple_system (
 				if (_sv2v_0)
 					;
 				for (i = 0; i < nums; i = i + 1)
-					ss[i] = (adr >= base_addr[(3 - i) * 32+:32]) && (adr < (base_addr[(3 - i) * 32+:32] + size[(3 - i) * 32+:32]));
+					ss[i] = (adr >= base_addr[(2 - i) * 32+:32]) && (adr < (base_addr[(2 - i) * 32+:32] + size[(2 - i) * 32+:32]));
 			end
 			always @(posedge ibex_simple_system.wbs[0].clk or negedge ibex_simple_system.wbs[0].rst)
 				if (!ibex_simple_system.wbs[0].rst)

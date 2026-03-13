@@ -1,5 +1,4 @@
 `default_nettype wire
-
 module prim_buf (
 	in_i,
 	out_o
@@ -12995,12 +12994,6 @@ endmodule
 module ibex_simple_system (
 	clk_sys,
 	rst_async_n,
-	scl_pad_i,
-	scl_pad_o,
-	scl_padoen_o,
-	sda_pad_i,
-	sda_pad_o,
-	sda_padoen_o,
 	ext_pad_i,
 	gpio_o,
 	gpio_oe,
@@ -13016,12 +13009,6 @@ module ibex_simple_system (
 	parameter DMEM_InitFile = "";
 	input wire clk_sys;
 	input wire rst_async_n;
-	input wire scl_pad_i;
-	output wire scl_pad_o;
-	output wire scl_padoen_o;
-	input wire sda_pad_i;
-	output wire sda_pad_o;
-	output wire sda_padoen_o;
 	input wire [1:0] ext_pad_i;
 	output wire [1:0] gpio_o;
 	output wire [1:0] gpio_oe;
@@ -13077,10 +13064,11 @@ module ibex_simple_system (
 			wire err;
 			wire [31:0] dat_m;
 			wire [31:0] dat_s;
+		end
+		for (_arr_55720 = 0; _arr_55720 <= 2; _arr_55720 = _arr_55720 + 1) begin : wbm_port_bindings
 			assign wbm[_arr_55720].rst = rst_sync_n;
 			assign wbm[_arr_55720].clk = clk_sys;
 		end
-
 	endgenerate
 	genvar _arr_3103E;
 	generate
@@ -13097,10 +13085,11 @@ module ibex_simple_system (
 			wire err;
 			wire [31:0] dat_m;
 			wire [31:0] dat_s;
+		end
+		for (_arr_3103E = 0; _arr_3103E <= 3; _arr_3103E = _arr_3103E + 1) begin : wbs_port_bindings
 			assign wbs[_arr_3103E].rst = rst_sync_n;
 			assign wbs[_arr_3103E].clk = clk_sys;
 		end
-
 	endgenerate
 	localparam _bbase_3E301_wb = 0;
 	generate

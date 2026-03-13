@@ -18,6 +18,7 @@ module tt_um_MLAB_MCU (
 
   // All output pins must be assigned. If not used, assign to 0.
   assign uo_out[7:2] = 6'b0;
+  assign uio_out[1:0]= 2'b0;
 
   // List all unused inputs to prevent warnings
   wire _unused = &{ena, 1'b0};
@@ -33,13 +34,13 @@ module tt_um_MLAB_MCU (
         .clk_sys      (clk),
         .rst_async_n  (rst_n),
 
-        .scl_pad_i    (uio_in[0]),
-        .scl_pad_o    (uio_out[0]),
-        .scl_padoen_o (uio_oe[0]),
+        // .scl_pad_i    (uio_in[0]),
+        // .scl_pad_o    (uio_out[0]),
+        // .scl_padoen_o (uio_oe[0]),
 
-        .sda_pad_i    (uio_in[1]),
-        .sda_pad_o    (uio_out[1]),
-        .sda_padoen_o (uio_oe[1]),
+        // .sda_pad_i    (uio_in[1]),
+        // .sda_pad_o    (uio_out[1]),
+        // .sda_padoen_o (uio_oe[1]),
 
         .o_qspi_sck   (uo_out[0]),
         .o_qspi_cs_n  (uo_out[1]),

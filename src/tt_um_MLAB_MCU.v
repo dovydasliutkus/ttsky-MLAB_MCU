@@ -17,8 +17,9 @@ module tt_um_MLAB_MCU (
 );
 
   // All output pins must be assigned. If not used, assign to 0.
-  assign uo_out[7:2] = 6'b0;
-  assign uio_out[1:0]= 2'b0;
+  assign uo_out[7:2]  = 6'b0;
+  assign uio_oe[1:0]  = 2'b0;
+  assign uio_out[1:0] = 2'b0;
 
   // List all unused inputs to prevent warnings
   wire _unused = &{ena, 1'b0};

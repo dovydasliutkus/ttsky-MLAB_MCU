@@ -1,4 +1,5 @@
 `default_nettype wire
+
 module prim_buf (
 	in_i,
 	out_o
@@ -13022,6 +13023,7 @@ module ibex_simple_system (
 	wire gpio_int;
 	wire [1:0] gpio_aux;
 	wire i2c_int;
+	assign i2c_int = 0;
 	wire uart_rx_int_o;
 	wire uart_tx_int_o;
 	wire uart_rx_i;

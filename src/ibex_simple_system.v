@@ -1,3 +1,5 @@
+`default_nettype wire
+
 module prim_buf (
 	in_i,
 	out_o

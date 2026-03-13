@@ -11806,8 +11806,8 @@ module ibex_simple_system (
 		end
 	endgenerate
 	assign rst_core_n = rst_sync_n;
-	assign uart_rx_int_o = 1'b0;
-	assign uart_tx_int_o = 1'b0;
+	assign uart_rx_int_o = 0;
+	assign uart_tx_int_o = 0;
 	localparam signed [31:0] ibex_pkg_IbexMuBiWidth = 4;
 	localparam [3:0] ibex_pkg_IbexMuBiOn = 4'b0101;
 	localparam _bbase_4E807_instr_wb = 1;
@@ -12092,7 +12092,6 @@ module ibex_simple_system (
 	assign u_gpio.ext_pad_i = ext_pad_i;
 	assign gpio_o = u_gpio.ext_pad_o;
 	assign gpio_oe = u_gpio.ext_padoe_o;
-	assign gpio_aux = {uart_tx_o, 1'b0};
 	localparam _bbase_3A12E_wb = 1;
 	generate
 		if (1) begin : u_pit

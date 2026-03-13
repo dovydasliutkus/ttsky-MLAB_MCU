@@ -1,4 +1,4 @@
-`default_nettype none
+`default_nettype wire
 `timescale 1ns / 1ps
 
 /* This testbench just instantiates the module and makes some convenient wires

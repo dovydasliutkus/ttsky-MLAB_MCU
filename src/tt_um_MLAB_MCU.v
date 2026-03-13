@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-`default_nettype none
+`default_nettype wire
 
 module tt_um_MLAB_MCU (
     input  wire [7:0] ui_in,    // Dedicated inputs

@@ -11736,8 +11736,6 @@ module ibex_simple_system (
 	wire [1:0] gpio_aux;
 	wire i2c_int;
 	assign i2c_int = 0;
-	wire uart_rx_int_o;
-	wire uart_tx_int_o;
 	wire pit_irq;
 	localparam signed [31:0] NUM_MASTERS = 2;
 	localparam signed [31:0] NUM_SLAVES = 3;
@@ -11804,8 +11802,6 @@ module ibex_simple_system (
 		end
 	endgenerate
 	assign rst_core_n = rst_sync_n;
-	assign uart_rx_int_o = 0;
-	assign uart_tx_int_o = 0;
 	localparam signed [31:0] ibex_pkg_IbexMuBiWidth = 4;
 	localparam [3:0] ibex_pkg_IbexMuBiOn = 4'b0101;
 	localparam _bbase_4E807_instr_wb = 1;
@@ -12045,7 +12041,7 @@ module ibex_simple_system (
 	assign u_wb_ibex_top.irq_software = 1'b0;
 	assign u_wb_ibex_top.irq_timer = pit_irq;
 	assign u_wb_ibex_top.irq_external = gpio_int;
-	assign u_wb_ibex_top.irq_fast = {9'b000000000, uart_tx_int_o, uart_rx_int_o, 2'b00, i2c_int, 1'b0};
+	assign u_wb_ibex_top.irq_fast = 15'b000000000000000;
 	assign u_wb_ibex_top.irq_nm = 1'b0;
 	assign u_wb_ibex_top.scramble_key_valid = 1'b0;
 	assign u_wb_ibex_top.scramble_key = 1'sb0;
@@ -12091,7 +12087,6 @@ module ibex_simple_system (
 	assign gpio_o = u_gpio.ext_pad_o;
 	assign gpio_oe = u_gpio.ext_padoe_o;
 	assign gpio_aux = 2'b00;
-	assign ext_pad_i = 2'b00;
 	localparam _bbase_3A12E_wb = 1;
 	generate
 		if (1) begin : u_pit

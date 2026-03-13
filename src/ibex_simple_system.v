@@ -11738,8 +11738,6 @@ module ibex_simple_system (
 	assign i2c_int = 0;
 	wire uart_rx_int_o;
 	wire uart_tx_int_o;
-	wire uart_rx_i;
-	wire uart_tx_o;
 	wire pit_irq;
 	localparam signed [31:0] NUM_MASTERS = 2;
 	localparam signed [31:0] NUM_SLAVES = 3;
@@ -12092,6 +12090,7 @@ module ibex_simple_system (
 	assign u_gpio.ext_pad_i = ext_pad_i;
 	assign gpio_o = u_gpio.ext_pad_o;
 	assign gpio_oe = u_gpio.ext_padoe_o;
+	assign gpio_aux = 2'b00;
 	localparam _bbase_3A12E_wb = 1;
 	generate
 		if (1) begin : u_pit

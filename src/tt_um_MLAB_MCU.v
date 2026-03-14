@@ -51,7 +51,7 @@ module tt_um_MLAB_MCU (
         .o_qspi_cs_n  (uo_out[1]),
         .o_qspi_mod   (qspi_mod),
         .o_qspi_dat   (uio_out[5:2]),
-        .i_qspi_dat   (uio_in[5:2]),
+        .i_qspi_dat   (uio_in[5:2])
 
         // .ext_pad_i    (uio_in[7:6]),
         // .gpio_o       (uio_out[7:6]),

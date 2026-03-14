@@ -11174,7 +11174,7 @@ module ibex_simple_system (
 	assign i2c_int = 0;
 	wire pit_irq;
 	localparam signed [31:0] NUM_MASTERS = 2;
-	localparam signed [31:0] NUM_SLAVES = 2;
+	localparam signed [31:0] NUM_SLAVES = 1;
 	localparam signed [31:0] PIT_SLAVE_PORT_NUM = 4;
 	localparam [31:0] imem_base_addr = 32'ha0000000;
 	localparam [31:0] imem_size = 'h2000;
@@ -11218,7 +11218,7 @@ module ibex_simple_system (
 	endgenerate
 	genvar _arr_3103E;
 	generate
-		for (_arr_3103E = 0; _arr_3103E <= 1; _arr_3103E = _arr_3103E + 1) begin : wbs
+		for (_arr_3103E = 0; _arr_3103E <= 0; _arr_3103E = _arr_3103E + 1) begin : wbs
 			wire rst;
 			wire clk;
 			wire ack;
@@ -11232,7 +11232,7 @@ module ibex_simple_system (
 			wire [31:0] dat_m;
 			wire [31:0] dat_s;
 		end
-		for (_arr_3103E = 0; _arr_3103E <= 1; _arr_3103E = _arr_3103E + 1) begin : wbs_port_bindings
+		for (_arr_3103E = 0; _arr_3103E <= 0; _arr_3103E = _arr_3103E + 1) begin : wbs_port_bindings
 			assign wbs[_arr_3103E].rst = rst_sync_n;
 			assign wbs[_arr_3103E].clk = clk_sys;
 		end
@@ -11537,8 +11537,8 @@ module ibex_simple_system (
 			reg _sv2v_0;
 			localparam numm = _param_C42A7_numm;
 			localparam nums = _param_C42A7_nums;
-			localparam [63:0] base_addr = _param_C42A7_base_addr;
-			localparam [63:0] size = _param_C42A7_size;
+			localparam [31:0] base_addr = _param_C42A7_base_addr;
+			localparam [31:0] size = _param_C42A7_size;
 			localparam _mbase_wbm = 0;
 			localparam _mbase_wbs = 0;
 			reg cyc;
@@ -11553,8 +11553,8 @@ module ibex_simple_system (
 			reg [31:0] dat_rd;
 			reg [1:0] gnt;
 			reg [1:0] gnt1;
-			reg [1:0] ss;
-			reg [1:0] ss1;
+			reg [0:0] ss;
+			reg [0:0] ss1;
 			wire [1:0] wbm_cyc;
 			wire [1:0] wbm_stb;
 			wire [1:0] wbm_we;
@@ -11579,16 +11579,16 @@ module ibex_simple_system (
 				assign wbm_dat_i[i * 32+:32] = ibex_simple_system.wbm[i + _mbase_wbm].dat_m;
 				assign ibex_simple_system.wbm[i + _mbase_wbm].dat_s = wbm_dat_o[i * 32+:32];
 			end
-			reg [1:0] wbs_cyc;
-			reg [1:0] wbs_stb;
-			reg [1:0] wbs_we;
-			wire [1:0] wbs_ack;
-			wire [1:0] wbs_err;
-			wire [1:0] wbs_stall;
-			reg [63:0] wbs_adr;
-			reg [7:0] wbs_sel;
-			wire [63:0] wbs_dat_i;
-			reg [63:0] wbs_dat_o;
+			reg [0:0] wbs_cyc;
+			reg [0:0] wbs_stb;
+			reg [0:0] wbs_we;
+			wire [0:0] wbs_ack;
+			wire [0:0] wbs_err;
+			wire [0:0] wbs_stall;
+			reg [31:0] wbs_adr;
+			reg [3:0] wbs_sel;
+			wire [31:0] wbs_dat_i;
+			reg [31:0] wbs_dat_o;
 			genvar _gv_i_35;
 			for (_gv_i_35 = 0; _gv_i_35 < nums; _gv_i_35 = _gv_i_35 + 1) begin : genblk2
 				localparam i = _gv_i_35;
@@ -11608,7 +11608,7 @@ module ibex_simple_system (
 				if (_sv2v_0)
 					;
 				for (i = 0; i < nums; i = i + 1)
-					ss[i] = (adr >= base_addr[(1 - i) * 32+:32]) && (adr < (base_addr[(1 - i) * 32+:32] + size[(1 - i) * 32+:32]));
+					ss[i] = (adr >= base_addr[-i * 32+:32]) && (adr < (base_addr[-i * 32+:32] + size[-i * 32+:32]));
 			end
 			always @(posedge ibex_simple_system.wbs[0].clk or negedge ibex_simple_system.wbs[0].rst)
 				if (!ibex_simple_system.wbs[0].rst)

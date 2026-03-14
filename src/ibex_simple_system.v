@@ -11698,14 +11698,47 @@ module ibex_simple_system (
 	assign gpio_o = u_gpio.ext_pad_o;
 	assign gpio_oe = u_gpio.ext_padoe_o;
 	assign gpio_aux = 2'b00;
-	wb_spi_flash u_spi_flash(
-		.wb(wbs[1]),
-		.o_qspi_sck(o_qspi_sck),
-		.o_qspi_cs_n(o_qspi_cs_n),
-		.o_qspi_mod(o_qspi_mod),
-		.o_qspi_dat(o_qspi_dat),
-		.i_qspi_dat(i_qspi_dat)
-	);
+	localparam _bbase_08BBA_wb = 1;
+	generate
+		if (1) begin : u_spi_flash
+			localparam _mbase_wb = _bbase_08BBA_wb;
+			wire o_qspi_sck;
+			wire o_qspi_cs_n;
+			wire [1:0] o_qspi_mod;
+			wire [3:0] o_qspi_dat;
+			wire [3:0] i_qspi_dat;
+			assign ibex_simple_system.wbs[_mbase_wb].err = 1'b0;
+			wire stall;
+			assign ibex_simple_system.wbs[_mbase_wb].stall = (ibex_simple_system.wbs[_mbase_wb].cyc & ibex_simple_system.wbs[_mbase_wb].stb ? stall : 1'b0);
+			qflexpress #(
+				.LGFLASHSZ(24),
+				.OPT_STARTUP(1),
+				.OPT_CLKDIV(1)
+			) u_wb_spi_flash(
+				.i_clk(ibex_simple_system.wbs[_mbase_wb].clk),
+				.i_reset(~ibex_simple_system.wbs[_mbase_wb].rst),
+				.i_wb_cyc(ibex_simple_system.wbs[_mbase_wb].cyc),
+				.i_wb_stb(ibex_simple_system.wbs[_mbase_wb].stb),
+				.i_cfg_stb(1'b0),
+				.i_wb_we(ibex_simple_system.wbs[_mbase_wb].we),
+				.i_wb_addr({2'b00, ibex_simple_system.wbs[_mbase_wb].adr[21:2]}),
+				.o_wb_stall(stall),
+				.o_wb_ack(ibex_simple_system.wbs[_mbase_wb].ack),
+				.i_wb_data(ibex_simple_system.wbs[_mbase_wb].dat_m),
+				.o_wb_data(ibex_simple_system.wbs[_mbase_wb].dat_s),
+				.o_qspi_sck(o_qspi_sck),
+				.o_qspi_cs_n(o_qspi_cs_n),
+				.o_qspi_mod(o_qspi_mod),
+				.o_qspi_dat(o_qspi_dat),
+				.i_qspi_dat(i_qspi_dat)
+			);
+		end
+	endgenerate
+	assign o_qspi_sck = u_spi_flash.o_qspi_sck;
+	assign o_qspi_cs_n = u_spi_flash.o_qspi_cs_n;
+	assign o_qspi_mod = u_spi_flash.o_qspi_mod;
+	assign o_qspi_dat = u_spi_flash.o_qspi_dat;
+	assign u_spi_flash.i_qspi_dat = i_qspi_dat;
 	localparam _bbase_C42A7_wbm = 0;
 	localparam _bbase_C42A7_wbs = 0;
 	localparam _param_C42A7_numm = NUM_MASTERS;

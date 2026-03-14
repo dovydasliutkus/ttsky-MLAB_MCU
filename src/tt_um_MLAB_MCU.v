@@ -21,6 +21,10 @@ module tt_um_MLAB_MCU (
   assign uio_oe[1:0]  = 2'b0;
   assign uio_out[1:0] = 2'b0;
 
+  assign uo_out[7:6]  = 6'b0;
+  assign uio_oe[7:6]  = 2'b0;
+  assign uio_out[7:6] = 2'b0;
+
   // List all unused inputs to prevent warnings
   wire _unused = &{ena, 1'b0};
 
@@ -49,9 +53,9 @@ module tt_um_MLAB_MCU (
         .o_qspi_dat   (uio_out[5:2]),
         .i_qspi_dat   (uio_in[5:2]),
 
-        .ext_pad_i    (uio_in[7:6]),
-        .gpio_o       (uio_out[7:6]),
-        .gpio_oe      (uio_oe[7:6])
+        // .ext_pad_i    (uio_in[7:6]),
+        // .gpio_o       (uio_out[7:6]),
+        // .gpio_oe      (uio_oe[7:6])
     );
 
   always @(*)begin

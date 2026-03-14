@@ -10535,176 +10535,6 @@ module areset_sync (
 			synch_regs_q <= {synch_regs_q[NumRegs - 2:0], 1'b1};
 	assign o_rst_sync = synch_regs_q[NumRegs - 1];
 endmodule
-module gpio_top (
-	wb_clk_i,
-	wb_rst_i_n,
-	wb_cyc_i,
-	wb_adr_i,
-	wb_dat_i,
-	wb_sel_i,
-	wb_we_i,
-	wb_stb_i,
-	wb_dat_o,
-	wb_ack_o,
-	wb_err_o,
-	wb_inta_o,
-	aux_i,
-	ext_pad_i,
-	ext_pad_o,
-	ext_padoe_o
-);
-	parameter dw = 32;
-	parameter aw = 8;
-	parameter gw = 2;
-	input wb_clk_i;
-	input wb_rst_i_n;
-	input wb_cyc_i;
-	input [aw - 1:0] wb_adr_i;
-	input [dw - 1:0] wb_dat_i;
-	input [3:0] wb_sel_i;
-	input wb_we_i;
-	input wb_stb_i;
-	output reg [dw - 1:0] wb_dat_o;
-	output reg wb_ack_o;
-	output reg wb_err_o;
-	output reg wb_inta_o;
-	input [gw - 1:0] aux_i;
-	input [gw - 1:0] ext_pad_i;
-	output wire [gw - 1:0] ext_pad_o;
-	output wire [gw - 1:0] ext_padoe_o;
-	reg [gw - 1:0] rgpio_in;
-	reg [gw - 1:0] rgpio_out;
-	reg [gw - 1:0] rgpio_oe;
-	reg [gw - 1:0] rgpio_inte;
-	reg [gw - 1:0] rgpio_ptrig;
-	reg [gw - 1:0] rgpio_aux;
-	reg [1:0] rgpio_ctrl;
-	reg [gw - 1:0] rgpio_ints;
-	wire [gw - 1:0] rgpio_eclk;
-	wire [gw - 1:0] rgpio_nec;
-	reg [gw - 1:0] sync;
-	reg [gw - 1:0] ext_pad_s;
-	wire rgpio_out_sel;
-	wire rgpio_oe_sel;
-	wire rgpio_inte_sel;
-	wire rgpio_ptrig_sel;
-	wire rgpio_aux_sel;
-	wire rgpio_ctrl_sel;
-	wire rgpio_ints_sel;
-	wire rgpio_eclk_sel;
-	wire rgpio_nec_sel;
-	wire full_decoding;
-	wire [gw - 1:0] in_muxed;
-	wire wb_ack;
-	wire wb_err;
-	wire wb_inta;
-	reg [dw - 1:0] wb_dat;
-	wire [gw - 1:0] out_pad;
-	assign wb_ack = (wb_cyc_i & wb_stb_i) & !wb_err_o;
-	always @(posedge wb_clk_i or negedge wb_rst_i_n)
-		if (!wb_rst_i_n)
-			wb_ack_o <=  1'b0;
-		else
-			wb_ack_o <=  (wb_ack & ~wb_ack_o) & !wb_err;
-	assign wb_err = (wb_cyc_i & wb_stb_i) & (wb_sel_i != 4'b1111);
-	always @(posedge wb_clk_i or negedge wb_rst_i_n)
-		if (!wb_rst_i_n)
-			wb_err_o <=  1'b0;
-		else
-			wb_err_o <=  wb_err & ~wb_err_o;
-	assign full_decoding = 1'b1;
-	assign rgpio_out_sel = ((wb_cyc_i & wb_stb_i) & (wb_adr_i[5:2] == 4'h1)) & full_decoding;
-	assign rgpio_oe_sel = ((wb_cyc_i & wb_stb_i) & (wb_adr_i[5:2] == 4'h2)) & full_decoding;
-	assign rgpio_inte_sel = ((wb_cyc_i & wb_stb_i) & (wb_adr_i[5:2] == 4'h3)) & full_decoding;
-	assign rgpio_ptrig_sel = ((wb_cyc_i & wb_stb_i) & (wb_adr_i[5:2] == 4'h4)) & full_decoding;
-	assign rgpio_aux_sel = ((wb_cyc_i & wb_stb_i) & (wb_adr_i[5:2] == 4'h5)) & full_decoding;
-	assign rgpio_ctrl_sel = ((wb_cyc_i & wb_stb_i) & (wb_adr_i[5:2] == 4'h6)) & full_decoding;
-	assign rgpio_ints_sel = ((wb_cyc_i & wb_stb_i) & (wb_adr_i[5:2] == 4'h7)) & full_decoding;
-	always @(posedge wb_clk_i or negedge wb_rst_i_n)
-		if (!wb_rst_i_n)
-			rgpio_ctrl <=  2'b00;
-		else if (rgpio_ctrl_sel && wb_we_i)
-			rgpio_ctrl <=  wb_dat_i[1:0];
-		else if (rgpio_ctrl[0])
-			rgpio_ctrl[1] <=  rgpio_ctrl[1] | wb_inta_o;
-	always @(posedge wb_clk_i or negedge wb_rst_i_n)
-		if (!wb_rst_i_n)
-			rgpio_out <=  {gw {1'b0}};
-		else if (rgpio_out_sel && wb_we_i)
-			rgpio_out <=  wb_dat_i[gw - 1:0];
-	always @(posedge wb_clk_i or negedge wb_rst_i_n)
-		if (!wb_rst_i_n)
-			rgpio_oe <=  {gw {1'b0}};
-		else if (rgpio_oe_sel && wb_we_i)
-			rgpio_oe <=  wb_dat_i[gw - 1:0];
-	always @(posedge wb_clk_i or negedge wb_rst_i_n)
-		if (!wb_rst_i_n)
-			rgpio_inte <=  {gw {1'b0}};
-		else if (rgpio_inte_sel && wb_we_i)
-			rgpio_inte <=  wb_dat_i[gw - 1:0];
-	always @(posedge wb_clk_i or negedge wb_rst_i_n)
-		if (!wb_rst_i_n)
-			rgpio_ptrig <=  {gw {1'b0}};
-		else if (rgpio_ptrig_sel && wb_we_i)
-			rgpio_ptrig <=  wb_dat_i[gw - 1:0];
-	always @(posedge wb_clk_i or negedge wb_rst_i_n)
-		if (!wb_rst_i_n)
-			rgpio_aux <=  {gw {1'b0}};
-		else if (rgpio_aux_sel && wb_we_i)
-			rgpio_aux <=  wb_dat_i[gw - 1:0];
-	assign rgpio_eclk = 2'h0;
-	assign rgpio_nec = 2'h0;
-	always @(posedge wb_clk_i or negedge wb_rst_i_n)
-		if (!wb_rst_i_n) begin
-			sync <=  {gw {1'b0}};
-			ext_pad_s <=  {gw {1'b0}};
-		end
-		else begin
-			sync <=  ext_pad_i;
-			ext_pad_s <=  sync;
-		end
-	always @(posedge wb_clk_i or negedge wb_rst_i_n)
-		if (!wb_rst_i_n)
-			rgpio_in <=  {gw {1'b0}};
-		else
-			rgpio_in <=  in_muxed;
-	assign in_muxed = ext_pad_s;
-	always @(wb_adr_i or rgpio_in or rgpio_out or rgpio_oe or rgpio_inte or rgpio_ptrig or rgpio_aux or rgpio_ctrl or rgpio_ints or rgpio_eclk or rgpio_nec)
-		case (wb_adr_i[5:2])
-			4'h1: wb_dat[dw - 1:0] = rgpio_out;
-			4'h2: wb_dat[dw - 1:0] = rgpio_oe;
-			4'h3: wb_dat[dw - 1:0] = rgpio_inte;
-			4'h4: wb_dat[dw - 1:0] = rgpio_ptrig;
-			4'h5: wb_dat[dw - 1:0] = rgpio_aux;
-			4'h6: begin
-				wb_dat[1:0] = rgpio_ctrl;
-				wb_dat[dw - 1:2] = {dw - 2 {1'b0}};
-			end
-			4'h7: wb_dat[dw - 1:0] = rgpio_ints;
-			default: wb_dat[dw - 1:0] = rgpio_in;
-		endcase
-	always @(posedge wb_clk_i or negedge wb_rst_i_n)
-		if (!wb_rst_i_n)
-			wb_dat_o <=  {dw {1'b0}};
-		else
-			wb_dat_o <=  wb_dat;
-	always @(posedge wb_clk_i or negedge wb_rst_i_n)
-		if (!wb_rst_i_n)
-			rgpio_ints <=  {gw {1'b0}};
-		else if (rgpio_ints_sel && wb_we_i)
-			rgpio_ints <=  wb_dat_i[gw - 1:0];
-		else if (rgpio_ctrl[0])
-			rgpio_ints <=  rgpio_ints | (((in_muxed ^ rgpio_in) & ~(in_muxed ^ rgpio_ptrig)) & rgpio_inte);
-	assign wb_inta = (|rgpio_ints ? rgpio_ctrl[0] : 1'b0);
-	always @(posedge wb_clk_i or negedge wb_rst_i_n)
-		if (!wb_rst_i_n)
-			wb_inta_o <=  1'b0;
-		else
-			wb_inta_o <=  wb_inta;
-	assign ext_padoe_o = rgpio_oe;
-	assign out_pad = (rgpio_out & ~rgpio_aux) | (aux_i & rgpio_aux);
-	assign ext_pad_o = out_pad;
-endmodule
 module qflexpress (
 	i_clk,
 	i_reset,
@@ -11320,9 +11150,6 @@ endmodule
 module ibex_simple_system (
 	clk_sys,
 	rst_async_n,
-	ext_pad_i,
-	gpio_o,
-	gpio_oe,
 	o_qspi_sck,
 	o_qspi_cs_n,
 	o_qspi_mod,
@@ -11335,9 +11162,6 @@ module ibex_simple_system (
 	parameter DMEM_InitFile = "";
 	input wire clk_sys;
 	input wire rst_async_n;
-	input wire [1:0] ext_pad_i;
-	output wire [1:0] gpio_o;
-	output wire [1:0] gpio_oe;
 	output wire o_qspi_sck;
 	output wire o_qspi_cs_n;
 	output wire [1:0] o_qspi_mod;
@@ -11346,7 +11170,6 @@ module ibex_simple_system (
 	wire rst_sync_n;
 	wire rst_core_n;
 	wire gpio_int;
-	wire [1:0] gpio_aux;
 	wire i2c_int;
 	assign i2c_int = 0;
 	wire pit_irq;
@@ -11653,7 +11476,7 @@ module ibex_simple_system (
 	assign u_wb_ibex_top.boot_addr = 32'h80000000;
 	assign u_wb_ibex_top.irq_software = 1'b0;
 	assign u_wb_ibex_top.irq_timer = 1'b0;
-	assign u_wb_ibex_top.irq_external = gpio_int;
+	assign u_wb_ibex_top.irq_external = 1'b0;
 	assign u_wb_ibex_top.irq_fast = 15'b000000000000000;
 	assign u_wb_ibex_top.irq_nm = 1'b0;
 	assign u_wb_ibex_top.scramble_key_valid = 1'b0;
@@ -11662,43 +11485,7 @@ module ibex_simple_system (
 	assign u_wb_ibex_top.debug_req = 1'b0;
 	assign u_wb_ibex_top.fetch_enable = ibex_pkg_IbexMuBiOn;
 	assign u_wb_ibex_top.scan_rst_n = 1'b0;
-	localparam _bbase_AF6D0_wb = 0;
-	generate
-		if (1) begin : u_gpio
-			localparam _mbase_wb = _bbase_AF6D0_wb;
-			wire int_o;
-			wire [1:0] aux_i;
-			wire [1:0] ext_pad_i;
-			wire [1:0] ext_pad_o;
-			wire [1:0] ext_padoe_o;
-			assign ibex_simple_system.wbs[_mbase_wb].stall = 1'b0;
-			gpio_top u_wb_gpio(
-				.wb_clk_i(ibex_simple_system.wbs[_mbase_wb].clk),
-				.wb_rst_i_n(ibex_simple_system.wbs[_mbase_wb].rst),
-				.wb_cyc_i(ibex_simple_system.wbs[_mbase_wb].cyc),
-				.wb_adr_i(ibex_simple_system.wbs[_mbase_wb].adr[7:0]),
-				.wb_dat_i(ibex_simple_system.wbs[_mbase_wb].dat_m),
-				.wb_dat_o(ibex_simple_system.wbs[_mbase_wb].dat_s),
-				.wb_sel_i(ibex_simple_system.wbs[_mbase_wb].sel),
-				.wb_we_i(ibex_simple_system.wbs[_mbase_wb].we),
-				.wb_stb_i(ibex_simple_system.wbs[_mbase_wb].stb),
-				.wb_ack_o(ibex_simple_system.wbs[_mbase_wb].ack),
-				.wb_err_o(ibex_simple_system.wbs[_mbase_wb].err),
-				.wb_inta_o(int_o),
-				.aux_i(aux_i),
-				.ext_pad_i(ext_pad_i),
-				.ext_pad_o(ext_pad_o),
-				.ext_padoe_o(ext_padoe_o)
-			);
-		end
-	endgenerate
-	assign gpio_int = u_gpio.int_o;
-	assign u_gpio.aux_i = gpio_aux;
-	assign u_gpio.ext_pad_i = ext_pad_i;
-	assign gpio_o = u_gpio.ext_pad_o;
-	assign gpio_oe = u_gpio.ext_padoe_o;
-	assign gpio_aux = 2'b00;
-	localparam _bbase_08BBA_wb = 1;
+	localparam _bbase_08BBA_wb = 0;
 	generate
 		if (1) begin : u_spi_flash
 			localparam _mbase_wb = _bbase_08BBA_wb;
@@ -11743,8 +11530,8 @@ module ibex_simple_system (
 	localparam _bbase_C42A7_wbs = 0;
 	localparam _param_C42A7_numm = NUM_MASTERS;
 	localparam _param_C42A7_nums = NUM_SLAVES;
-	localparam _param_C42A7_base_addr = {gpio_base_addr, spi_flash_base_addr};
-	localparam _param_C42A7_size = {gpio_size, spi_flash_size};
+	localparam _param_C42A7_base_addr = {spi_flash_base_addr};
+	localparam _param_C42A7_size = {spi_flash_size};
 	generate
 		if (1) begin : u_wb_interconnect
 			reg _sv2v_0;
